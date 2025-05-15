@@ -287,9 +287,7 @@ def simulation_loop(
         elem_inner_force = np.zeros((n_nodes_2d, 2))
 
         for la in range(n_nodes_2d):
-            mforce = elem_K_matrix[la] @ (elem_displacement.reshape(n_nodes_2d, 2, 1))
-            force_la = (mforce).sum(0)
-            elem_inner_force[la] += force_la.reshape(2)
+            elem_inner_force[la] += (elem_K_matrix[la] @ (elem_displacement.reshape(n_nodes_2d, 2, 1))).sum(0).reshape(2)
 
         global_acceleration[elem] -= elem_inner_force / global_mass[elem]
 
