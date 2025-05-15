@@ -19,8 +19,6 @@ from scipy.interpolate import lagrange
 from numpy.polynomial.legendre import legroots, legder, legval
 from itertools import product
 
-from numba import njit
-
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
