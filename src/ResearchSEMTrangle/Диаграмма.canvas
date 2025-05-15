@@ -1,0 +1,9 @@
+{
+	"nodes":[
+		{"id":"c9e20226a6863b92","type":"text","text":"Привет\n\n","x":-173,"y":-207,"width":250,"height":60},
+		{"id":"393e9fdd0c1ca054","type":"text","text":"Холст\n","x":-259,"y":-51,"width":250,"height":60}
+	],
+	"edges":[
+		{"id":"47eed2712f0ea6cb","fromNode":"c9e20226a6863b92","fromSide":"bottom","toNode":"393e9fdd0c1ca054","toSide":"top"}
+	]
+}
