@@ -6,7 +6,7 @@ import sys
 if sys.gettrace() is not None:
     VISUAL_MODE = False
 
-
+# VISUAL_MODE = False
 import time
 
 import numpy as np
@@ -35,23 +35,19 @@ FloatS2 = NDArray[np.float64]
 
 FloatS2x1 = NDArray[np.float64]
 FloatS2x2 = NDArray[np.float64]
-Float2xS2 = NDArray[np.float64]
 FloatS2x2x2 = NDArray[np.float64]
 
 FloatS2xS2x2 = NDArray[np.float64]
+FloatS2xS2x2x2 = NDArray[np.float64]
 
 FloatN = NDArray[np.float64]
 FloatNx1 = NDArray[np.float64]
 FloatNx2 = NDArray[np.float64]
-Float2xN = NDArray[np.float64]
 
 FloatExS2 = NDArray[np.float64]
 FloatExS2x1 = NDArray[np.float64]
 FloatExS2xS2x2 = NDArray[np.float64]
-
-FloatEx2S2x2S2 = NDArray[np.float64]
-Float2S2x2S2 = NDArray[np.float64]
-
+FloatExS2xS2x2x2 = NDArray[np.float64]
 
 FloatT = NDArray[np.float64]
 
@@ -207,45 +203,50 @@ def generate_spectral_mesh_box(grid_size: tuple[int, int], single_element_size: 
 
 
 
-def compute_global_K_matrixes(global_elems, global_weights, global_nablas,  hooke_a, hooke_b, hooke_c):
+def compute_global_K_matrixes(global_elems, global_nodes, nabla_shape_d2, weights_d2, hooke_a, hooke_b, hooke_c):
 
-    for elem in global_elems:
+    global_K_matrixes = []
 
-        global_weights[eid]
-        global_nablas[eid]
+    for eid, elem in enumerate(global_elems):
 
         n_nodes_2d = elem.shape[0]
 
-        elem_inner_force = np.zeros((n_nodes_2d, 2))
+        yacobians = compute_yacobians(global_nodes[elem], nabla_shape_d2)
+        antiyacobi_ms = compute_antiyacobi_ms(global_nodes[elem], nabla_shape_d2)
+
+        local_nablas = nabla_shape_d2@antiyacobi_ms
+        local_weights = weights_d2*yacobians
+
+        local_K_matrixes = np.zeros((n_nodes_2d, n_nodes_2d, 2, 2))
 
         NablaMatrixB = np.zeros((n_nodes_2d,n_nodes_2d,2,2))
-        NablaMatrixB[:,:,0,0] = operator_nabla[:,:,0]
-        NablaMatrixB[:,:,0,1] = operator_nabla[:,:,0]
-        NablaMatrixB[:,:,1,0] = operator_nabla[:,:,1]
-        NablaMatrixB[:,:,1,1] = operator_nabla[:,:,1]
+        NablaMatrixB[:,:,0,0] = local_nablas[:,:,0]
+        NablaMatrixB[:,:,0,1] = local_nablas[:,:,0]
+        NablaMatrixB[:,:,1,0] = local_nablas[:,:,1]
+        NablaMatrixB[:,:,1,1] = local_nablas[:,:,1]
 
         NablaMatrixR = np.zeros((n_nodes_2d,n_nodes_2d,2,2))
-        NablaMatrixR[:,:,0,0] = operator_nabla[:,:,0]
-        NablaMatrixR[:,:,0,1] = operator_nabla[:,:,1]
-        NablaMatrixR[:,:,1,0] = operator_nabla[:,:,0]
-        NablaMatrixR[:,:,1,1] = operator_nabla[:,:,1]
+        NablaMatrixR[:,:,0,0] = local_nablas[:,:,0]
+        NablaMatrixR[:,:,0,1] = local_nablas[:,:,1]
+        NablaMatrixR[:,:,1,0] = local_nablas[:,:,0]
+        NablaMatrixR[:,:,1,1] = local_nablas[:,:,1]
 
         NablaMatrixT = np.zeros((n_nodes_2d,n_nodes_2d,2,2))
-        NablaMatrixT[:,:,0,0] = operator_nabla[:,:,1]
-        NablaMatrixT[:,:,0,1] = operator_nabla[:,:,1]
-        NablaMatrixT[:,:,1,0] = operator_nabla[:,:,0]
-        NablaMatrixT[:,:,1,1] = operator_nabla[:,:,0]
+        NablaMatrixT[:,:,0,0] = local_nablas[:,:,1]
+        NablaMatrixT[:,:,0,1] = local_nablas[:,:,1]
+        NablaMatrixT[:,:,1,0] = local_nablas[:,:,0]
+        NablaMatrixT[:,:,1,1] = local_nablas[:,:,0]
 
         NablaMatrixL = np.zeros((n_nodes_2d,n_nodes_2d,2,2))
-        NablaMatrixL[:,:,0,0] = operator_nabla[:,:,1]
-        NablaMatrixL[:,:,0,1] = operator_nabla[:,:,0]
-        NablaMatrixL[:,:,1,0] = operator_nabla[:,:,1]
-        NablaMatrixL[:,:,1,1] = operator_nabla[:,:,0]
+        NablaMatrixL[:,:,0,0] = local_nablas[:,:,1]
+        NablaMatrixL[:,:,0,1] = local_nablas[:,:,0]
+        NablaMatrixL[:,:,1,0] = local_nablas[:,:,1]
+        NablaMatrixL[:,:,1,1] = local_nablas[:,:,0]
 
         for mu in range(n_nodes_2d):
             for la in range(n_nodes_2d):
                 
-                KMatrix = (weights.reshape(-1,1,1)*(
+                KMatrix = (local_weights.reshape(-1,1,1)*(
                     np.array([
                         [hooke_a, hooke_b],
                         [hooke_b, hooke_a]
@@ -256,66 +257,12 @@ def compute_global_K_matrixes(global_elems, global_weights, global_nablas,  hook
                     ]) * NablaMatrixL[:,la] * NablaMatrixT[:,mu]
                 )).sum(0)
 
-                elem_inner_force[la] += KMatrix
+                local_K_matrixes[la, mu] = KMatrix
 
+        global_K_matrixes.append(local_K_matrixes)
 
+    return global_K_matrixes
 
-
-@njit
-def compute_elem_inner_force(
-        weights: FloatS1,
-        operator_nabla: FloatS2xS2x2, 
-        elem_displacement: FloatS2x2, 
-        hooke_a: float, 
-        hooke_b: float, 
-        hooke_c: float, 
-    ) -> FloatS2x2:
-
-    n_nodes_2d = weights.shape[0]
-
-    elem_inner_force = np.zeros((n_nodes_2d, 2))
-
-    NablaMatrixB = np.zeros((n_nodes_2d,n_nodes_2d,2,2))
-    NablaMatrixB[:,:,0,0] = operator_nabla[:,:,0]
-    NablaMatrixB[:,:,0,1] = operator_nabla[:,:,0]
-    NablaMatrixB[:,:,1,0] = operator_nabla[:,:,1]
-    NablaMatrixB[:,:,1,1] = operator_nabla[:,:,1]
-
-    NablaMatrixR = np.zeros((n_nodes_2d,n_nodes_2d,2,2))
-    NablaMatrixR[:,:,0,0] = operator_nabla[:,:,0]
-    NablaMatrixR[:,:,0,1] = operator_nabla[:,:,1]
-    NablaMatrixR[:,:,1,0] = operator_nabla[:,:,0]
-    NablaMatrixR[:,:,1,1] = operator_nabla[:,:,1]
-
-    NablaMatrixT = np.zeros((n_nodes_2d,n_nodes_2d,2,2))
-    NablaMatrixT[:,:,0,0] = operator_nabla[:,:,1]
-    NablaMatrixT[:,:,0,1] = operator_nabla[:,:,1]
-    NablaMatrixT[:,:,1,0] = operator_nabla[:,:,0]
-    NablaMatrixT[:,:,1,1] = operator_nabla[:,:,0]
-
-    NablaMatrixL = np.zeros((n_nodes_2d,n_nodes_2d,2,2))
-    NablaMatrixL[:,:,0,0] = operator_nabla[:,:,1]
-    NablaMatrixL[:,:,0,1] = operator_nabla[:,:,0]
-    NablaMatrixL[:,:,1,0] = operator_nabla[:,:,1]
-    NablaMatrixL[:,:,1,1] = operator_nabla[:,:,0]
-
-    for mu in range(n_nodes_2d):
-        for la in range(n_nodes_2d):
-            
-            KMatrix = (weights.reshape(-1,1,1)*(
-                np.array([
-                    [hooke_a, hooke_b],
-                    [hooke_b, hooke_a]
-                ]) * NablaMatrixR[:,la] * NablaMatrixB[:,mu] + 
-                np.array([
-                    [hooke_c, hooke_c],
-                    [hooke_c, hooke_c]
-                ]) * NablaMatrixL[:,la] * NablaMatrixT[:,mu]
-            )).sum(0)
-
-            elem_inner_force[la] += elem_displacement[mu] @ KMatrix
-
-    return elem_inner_force
 
 
 def simulation_loop(
@@ -328,7 +275,7 @@ def simulation_loop(
         global_acceleration: FloatNx2, 
         global_elems: IntExS2,
         global_mass: FloatNx1,
-        global_K_matrixes: FloatEx2S2x2S2
+        global_K_matrixes: FloatExS2xS2x2x2
     ) -> None:
 
     """ получаем eid элемента, с которым собираемся работать """
@@ -336,12 +283,18 @@ def simulation_loop(
     for eid, elem in enumerate(global_elems):
         n_nodes_2d = elem.shape[0]
     
-        elem_K_matrix: Float2S2x2S2 = global_K_matrixes[eid]
-        elem_displacement = global_displacement[elem].reshape(2*n_nodes_2d)
+        elem_K_matrix: FloatS2xS2x2x2 = global_K_matrixes[eid]
+        elem_displacement = global_displacement[elem]
 
-        elem_inner_force = elem_K_matrix @ elem_displacement
+        elem_inner_force = np.zeros((n_nodes_2d, 2))
 
-        global_acceleration[elem] -= elem_inner_force.reshape(n_nodes_2d, 2) / global_mass[elem]
+        for la in range(n_nodes_2d):
+            mforce = elem_K_matrix[la] @ (elem_displacement.reshape(n_nodes_2d, 2, 1))
+            force_la = (mforce).sum(0)
+            elem_inner_force[la] += force_la.reshape(2)
+
+        global_acceleration[elem] -= elem_inner_force / global_mass[elem]
+
 
     global_velocity += tau*global_acceleration
     global_displacement += tau*global_velocity
@@ -398,10 +351,10 @@ def compute_hooke_constants(E: float, nu: float) -> tuple[float,float,float]:
 def main() -> None:
 
     # Порядок спектрального элемента
-    n_deg = 4
+    n_deg = 7
 
     # Физический размер пластины
-    plate_size = (10, 5)
+    plate_size = (20, 10)
 
     # Размер (квадратного) элемента
     single_element_size = 1
@@ -446,7 +399,7 @@ def main() -> None:
     # Точка возмущения Рикера
     riker_pulse_point = [grid_size[0]//2, grid_size[1]]
     riker_pulse_amplitude = 100
-    riker_pulse_frequency = 10
+    riker_pulse_frequency = 5
 
     # 
     riker_pulse = compute_riker_pulse(riker_pulse_frequency, riker_pulse_amplitude, 0, total_simulation_time, tau)
@@ -458,29 +411,18 @@ def main() -> None:
     pulse_node_id = n_deg*(riker_pulse_point[0] + x_nodes_count*riker_pulse_point[1])
     
     global_n_nodes = global_nodes.shape[0]
-    global_n_elems = global_elems.shape[0]
-    n_nodes_2d = weights_d2.shape[0]
 
     global_mass = compute_global_mass(constant_density, global_nodes, global_elems, nabla_shape_d2, weights_d2)
 
-    global_displacement = np.zeros((2, global_n_nodes))
-    global_velocity = np.zeros((2, global_n_nodes))
-    global_acceleration = np.zeros((2, global_n_nodes))
+    global_displacement = np.zeros((global_n_nodes, 2))
+    global_velocity = np.zeros((global_n_nodes, 2))
+    global_acceleration = np.zeros((global_n_nodes, 2))
 
     hooke_a, hooke_b, hooke_c = compute_hooke_constants(constan_young, constan_poisson)
 
-    global_K_matrixes = compute_global_K_matrixes()
 
-    global_nablas:FloatExS2xS2x2 = np.zeros([global_n_elems, n_nodes_2d, n_nodes_2d, 2])
-    global_weights: FloatExS2 = np.zeros([global_n_elems, n_nodes_2d])
+    global_K_matrixes = compute_global_K_matrixes(global_elems, global_nodes, nabla_shape_d2, weights_d2, hooke_a, hooke_b, hooke_c)
 
-    for eid, elem in enumerate(global_elems):
-        yacobians = compute_yacobians(global_nodes[elem], nabla_shape_d2)
-        antiyacobi_ms = compute_antiyacobi_ms(global_nodes[elem], nabla_shape_d2)
-
-        global_nablas[eid] = nabla_shape_d2@antiyacobi_ms
-        global_weights[eid] = weights_d2*yacobians
-        pass
 
 
     if VISUAL_MODE:
@@ -488,7 +430,7 @@ def main() -> None:
         visual_field = np.zeros((y_nodes_count, x_nodes_count))
 
         fig, ax = plt.subplots()
-        im = ax.imshow(visual_field, cmap='viridis', vmin=0, vmax=0.01)
+        im = ax.imshow(visual_field, cmap='viridis', vmin=0, vmax=0.001)
 
         def update(step: int) -> list[Any]:
             step_duration = time.time()
@@ -506,10 +448,10 @@ def main() -> None:
             )
             visual_field = (global_mass.ravel()*(global_velocity[:, 0]**2 + global_velocity[:, 1]**2)).reshape(y_nodes_count, x_nodes_count)
 
-            print(step, time.time() - step_duration, np.sum(visual_field), np.max(visual_field), np.max(global_velocity))
+            print(step, time.time() - step_duration, np.sum(visual_field), np.max(visual_field))
 
             im.set_data(visual_field)  # обновляем данные среза
-            im.set_clim(vmin=visual_field.min(), vmax=visual_field.max())
+            # im.set_clim(vmin=visual_field.min(), vmax=visual_field.max())
 
             return [im]
 

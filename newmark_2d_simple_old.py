@@ -224,7 +224,6 @@ def change_velocity_and_displacement(
         global_acceleration[index][1] += riker_pulse[step]
 
 
-@njit
 def compute_elem_inner_force(
         weights: FloatS1,
         operator_nabla: FloatS2xS2x2, 
@@ -280,7 +279,6 @@ def compute_elem_inner_force(
 
     return elem_inner_force
 
-@njit
 def change_acceleration(
         global_displacement: FloatNx2, 
         global_acceleration: FloatNx2,
@@ -309,7 +307,6 @@ def change_acceleration(
         )/global_mass[elem]
 
 
-@njit
 def simulation_loop(
         tau: float,
         step: int,
