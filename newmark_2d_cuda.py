@@ -9,7 +9,7 @@ if sys.gettrace() is not None:
 # VISUAL_MODE = False
 
 
-THREADS_COUNT = 256
+THREADS_COUNT = 1024
 
 # VISUAL_MODE = False
 import time
@@ -282,8 +282,8 @@ def change_acceleration(
     if la >= n_nodes_2d or eid > global_n_elems:
         return
 
-    elem_accelerations_x = cuda.shared.array(128, float32)
-    elem_accelerations_y = cuda.shared.array(128, float32)
+    elem_accelerations_x = cuda.shared.array(THREADS_COUNT, float32)
+    elem_accelerations_y = cuda.shared.array(THREADS_COUNT, float32)
 
     elem_accelerations_x[la] = 0
     elem_accelerations_y[la] = 0
@@ -483,7 +483,7 @@ def main() -> None:
     # Точка возмущения Рикера
     riker_pulse_point = [grid_size[0]//2, grid_size[1]]
     riker_pulse_amplitude = 100
-    riker_pulse_frequency = 10
+    riker_pulse_frequency = 5
 
     # 
     riker_pulse = compute_riker_pulse(riker_pulse_frequency, riker_pulse_amplitude, 0, total_simulation_time, tau)

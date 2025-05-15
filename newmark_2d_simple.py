@@ -359,7 +359,7 @@ def main() -> None:
     total_simulation_time = 0.5
 
     # Количество шагов симуляции
-    total_steps = 200
+    total_steps = 428
 
     # Шаг по времени
     tau = total_simulation_time/total_steps
@@ -427,9 +427,11 @@ def main() -> None:
 
         fig, ax = plt.subplots()
         im = ax.imshow(visual_field, cmap='viridis', vmin=0, vmax=0.001)
-
+        
+        step_duration = time.time()
+        
         def update(step: int) -> list[Any]:
-            step_duration = time.time()
+            
             simulation_loop(
                 tau,
                 step,
@@ -455,7 +457,7 @@ def main() -> None:
         plt.show()
 
     else:
-
+        
         for step in range(total_steps):
             step_duration = time.time()
 

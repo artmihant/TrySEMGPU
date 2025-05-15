@@ -1,0 +1,14 @@
+reset
+create surface rectangle width 20 height 10 zplane 
+surface 1  size 1
+mesh surface 1 
+create material 1
+modify material 1 name 'Mat1'
+modify material 1 set property 'MODULUS' value 100000
+modify material 1 set property 'POISSON' value 1000
+modify material 1 set property 'DENSITY' value 0.25
+
+block 1 add surface 1 
+block 1  material 1 cs 1 element plane order 7
+
+create force  on node 170  force value 1 direction 0 1 0
