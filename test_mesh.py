@@ -3,10 +3,10 @@ from spectral_elements import SpectralElement, SpectralElementType, SpectralMesh
 from itertools import product
 
 
-def generate_spectral_mesh_2d_box(grid_size: tuple[int, int], single_element_size: float, start_point: tuple[float, float], n_deg: int) -> SpectralMesh:
+def generate_spectral_mesh_2d_box(grid_size: tuple[int, int], single_element_size: float, start_point: tuple[float, float], n_deg: int) -> tuple[SpectralMesh, SpectralElementType]:
 
-    elements_type = SpectralElementType('cube', DIM, n_deg)
-    elements_type_1d = SpectralElementType('cube', 1, n_deg)
+    elements_type = SpectralElementType(1, DIM, n_deg)
+    elements_type_1d = SpectralElementType(1, 1, n_deg)
 
     x_nodes_count = (grid_size[0]*n_deg + 1)
     y_nodes_count = (grid_size[1]*n_deg + 1)
@@ -44,4 +44,4 @@ def generate_spectral_mesh_2d_box(grid_size: tuple[int, int], single_element_siz
 
         elements.append(element)
 
-    return SpectralMesh(nodes, elements)
+    return SpectralMesh(nodes, elements), elements_type

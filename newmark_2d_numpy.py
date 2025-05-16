@@ -45,10 +45,10 @@ def simulation_step(
 def main():
 
     # Порядок спектрального элемента
-    n_deg = 5
+    n_deg = 3
 
     # Физический размер пластины
-    plate_size = (20, 10)
+    plate_size = (10, 5)
 
     # Размер (квадратного) элемента
     single_element_size = 1
@@ -78,7 +78,7 @@ def main():
     constant_Vs = (constan_young/constant_density/2/(1+constan_poisson))**0.5
 
     # Генератор сетки
-    mesh = generate_spectral_mesh_2d_box(grid_size, single_element_size, start_point, n_deg)
+    mesh, elements_type = generate_spectral_mesh_2d_box(grid_size, single_element_size, start_point, n_deg)
     
     x_nodes_count = (grid_size[0]*n_deg + 1)
     y_nodes_count = (grid_size[1]*n_deg + 1)
@@ -95,18 +95,18 @@ def main():
     riker_pulse_point = [grid_size[0]//2, grid_size[1]]
     riker_pulse_nid = n_deg*(riker_pulse_point[0] + x_nodes_count*riker_pulse_point[1])
 
-    global_density = mesh.array(1)
+    global_density = mesh.nodes_array(1)
     global_density.fill(constant_density)
 
-    global_mass = mesh.array(1)
+    global_mass = mesh.nodes_array(1)
 
     for element in mesh.elements:
         global_mass[element.nids] += element.weights*global_density[element.nids]
 
-    global_displacement = mesh.array(DIM)
-    global_velocity = mesh.array(DIM)
-    global_acceleration = mesh.array(DIM)
-    global_outer_force = mesh.array(DIM)
+    global_displacement = mesh.nodes_array(DIM)
+    global_velocity = mesh.nodes_array(DIM)
+    global_acceleration = mesh.nodes_array(DIM)
+    global_outer_force = mesh.nodes_array(DIM)
 
 
     if VISUAL_MODE:

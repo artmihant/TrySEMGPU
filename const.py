@@ -11,13 +11,14 @@ if sys.gettrace() is not None:
 
 # VISUAL_MODE = False
 
-FLOAT = np.float32
-INT = np.int32
+FLOAT = np.float64
+INT = np.int64
 DIM = 2
 
 FloatDxD = NDArray[FLOAT]
 
 FloatN = NDArray[FLOAT]
+FloatNx1 = NDArray[FLOAT]
 FloatNxD = NDArray[FLOAT]
 
 FloatS = NDArray[FLOAT]
@@ -29,13 +30,15 @@ FloatSxDxD = NDArray[FLOAT]
 FloatSxSxD = NDArray[FLOAT]
 FloatSxSxDxD = NDArray[FLOAT]
 
+IntA = NDArray[INT]
 IntS = NDArray[INT]
-ExIntS = list[NDArray[INT]]
+IntN = NDArray[INT]
+IntE = NDArray[INT]
+IntEN = NDArray[INT]
 
-ExFloatS = list[NDArray[FLOAT]]
-ExFloatSxD = list[NDArray[FLOAT]]
-ExFloatSxSxD = list[NDArray[FLOAT]]
-ExFloatSxSxDxD = list[NDArray[FLOAT]]
+FloatA = NDArray[FLOAT]
 
+FloatE = NDArray[FLOAT]
 FloatT = NDArray[FLOAT]
+FloatENx1 = NDArray[FLOAT]
 

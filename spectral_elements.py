@@ -54,7 +54,7 @@ def compute_cube_2d_nabla_shape(gll_nodes: FloatS) -> FloatSxSxD:
 
     n_gll_nodes = len(gll_nodes)
 
-    nabla_shape_1d = np.zeros((n_gll_nodes**2, n_gll_nodes**2, 2), dtype=FLOAT)
+    nabla_shape_2d = np.zeros((n_gll_nodes**2, n_gll_nodes**2, 2), dtype=FLOAT)
 
     for i1, j1 in product(range(n_gll_nodes), range(n_gll_nodes)):
         index1 = i1 + j1*n_gll_nodes
@@ -73,18 +73,18 @@ def compute_cube_2d_nabla_shape(gll_nodes: FloatS) -> FloatSxSxD:
             index2 = i2 + j2*n_gll_nodes
 
             if j1 == j2:
-                nabla_shape_1d[index2, index1, 0] = np.polyval(dipoly, gll_nodes[i2])
+                nabla_shape_2d[index2, index1, 0] = np.polyval(dipoly, gll_nodes[i2])
             if i1 == i2:
-                nabla_shape_1d[index2, index1, 1] = np.polyval(djpoly, gll_nodes[j2])
+                nabla_shape_2d[index2, index1, 1] = np.polyval(djpoly, gll_nodes[j2])
 
-    return nabla_shape_1d
+    return nabla_shape_2d
 
 
 def compute_cube_1d_nabla_shape(gll_nodes: FloatS) -> FloatSxSxD:
 
     n_gll_nodes = len(gll_nodes)
 
-    nabla_shape_2d = np.zeros((n_gll_nodes, n_gll_nodes, 1), dtype=FLOAT)
+    nabla_shape_1d = np.zeros((n_gll_nodes, n_gll_nodes, 1), dtype=FLOAT)
 
     for i1 in product(range(n_gll_nodes)):
         index1 = i1
@@ -97,28 +97,29 @@ def compute_cube_1d_nabla_shape(gll_nodes: FloatS) -> FloatSxSxD:
         for i2 in product(range(n_gll_nodes)):
             index2 = i2
 
-            nabla_shape_2d[index2, index1, 0] = np.polyval(dipoly, gll_nodes[i2])
+            nabla_shape_1d[index2, index1, 0] = np.polyval(dipoly, gll_nodes[i2])
         pass
 
-    return nabla_shape_2d
+    return nabla_shape_1d
 
 
 
 class SpectralElementType:
 
-    weights: FloatS
     dim: int
     deg: int
-    family: str
+    family: int
+    weights: FloatS
     nabla_shape: FloatSxSxD
     xi_nodes: FloatS
 
-    def __init__(self, family: str, dim: int, deg: int):
+    def __init__(self, family: int, dim: int, deg: int):
 
         self.dim = dim
         self.deg = deg
+        self.family = family
 
-        if family == 'cube':
+        if family == 1: # кубы
 
             gll_nodes, gll_weights = compute_gll_points_and_weights(deg)
 
@@ -135,7 +136,7 @@ class SpectralElementType:
             else:
                 raise Exception(f'{dim}D not supported!')
         else:
-            raise Exception(f'{family} not supported!')
+            raise Exception(f'Family {family} not supported!')
 
     def __len__(self):
         return self.xi_nodes.shape[0]
@@ -199,6 +200,10 @@ class SpectralElement:
     @property
     def deg(self):
         return self.element_type.deg
+        
+    @property
+    def family(self):
+        return self.element_type.family
     
     def array(self, dim, dtype=FLOAT):
         return np.zeros((self.nodes_count,dim), dtype=dtype)
@@ -273,10 +278,28 @@ class SpectralMesh:
 
     elements: list[SpectralElement]
     nodes: FloatNxD
+    nids: IntEN
+    offsets: IntA
 
     def __init__(self, nodes: FloatNxD, elements: list[SpectralElement]):
         self.nodes = nodes
         self.elements = elements
+
+        elements_nids: list[int] = []
+
+        elements_offsets = [0]
+
+        offset = 0
+
+        for element in elements:
+            elements_nids.extend(element.nids)
+            offset += len(element.nids)
+            elements_offsets.append(offset)
+
+        self.nids = np.array(elements_nids, dtype=INT)
+        self.offsets = np.array(elements_offsets, dtype=INT)
+
+
 
     @property
     def nodes_count(self) -> int:
@@ -285,5 +308,36 @@ class SpectralMesh:
     def dim(self):
         return self.nodes.shape[1]
     
-    def array(self, dim, dtype=FLOAT):
+    def nodes_array(self, dim, dtype=FLOAT):
         return np.zeros((self.nodes_count,dim), dtype=dtype)
+
+    def elems_array(self, dim, dtype=FLOAT):
+        return np.zeros((len(self.elements),dim), dtype=dtype)
+
+    def nids_array(self, dim, dtype=FLOAT):
+        return np.zeros((len(self.nids),dim), dtype=dtype)
+
+    def get_elements_families(self) -> IntE:
+        elements_families = np.zeros(len(self.elements), dtype=INT)
+
+        for eid, element in enumerate(self.elements):
+            elements_families[eid] = element.family
+
+        return elements_families
+
+    def get_elements_degs(self) -> IntE:
+        elements_degrees = np.zeros(len(self.elements), dtype=INT)
+
+        for eid, element in enumerate(self.elements):
+            elements_degrees[eid] = element.deg
+
+        return elements_degrees
+   
+    def get_elements_dims(self) -> IntE:
+        elements_dims = np.zeros(len(self.elements), dtype=INT)
+
+        for eid, element in enumerate(self.elements):
+            elements_dims[eid] = element.dim
+
+        return elements_dims
+
