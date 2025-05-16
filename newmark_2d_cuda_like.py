@@ -19,7 +19,7 @@ def compute_riker_pulse(f:float, A:float, t0:float, t1:float, dt:float) -> Float
         )(np.arange(t0, t1, dt))
 
 
-def simulation_loop(
+def simulation_step(
         mesh: SpectralMesh, 
         tau: float,
         global_outer_force: FloatNxD, 
@@ -27,21 +27,14 @@ def simulation_loop(
         global_velocity: FloatNxD, 
         global_acceleration: FloatNxD, 
         global_mass: FloatNxD,
-    ) -> None:
-
-    """ главный цикл симуляции отвечает за запуск ядер и настройку """
+    ):
 
     global_acceleration[:] = 0
     global_acceleration += global_outer_force/global_mass
 
     for element in mesh.elements:
-    
-        elem_displacement = global_displacement[element.nids]
 
-        elem_inner_force = element.array(DIM)
-
-        for la in range(len(element)):
-            elem_inner_force[la] += (element.k_matrix[la] @ (elem_displacement.reshape(-1, DIM, 1))).sum(0).reshape(DIM)
+        elem_inner_force = np.tensordot(element.k_matrix, global_displacement[element.nids], axes=([0,2],[0,1]))
 
         global_acceleration[element.nids] -= elem_inner_force / global_mass[element.nids]
 
@@ -49,7 +42,7 @@ def simulation_loop(
     global_displacement += tau*global_velocity
 
 
-def main() -> None:
+def main():
 
     # Порядок спектрального элемента
     n_deg = 5
@@ -64,7 +57,7 @@ def main() -> None:
     total_simulation_time = 0.5
 
     # Количество шагов симуляции
-    total_steps = 428
+    total_steps = 400
 
     # Шаг по времени
     tau = total_simulation_time/total_steps
@@ -131,7 +124,7 @@ def main() -> None:
             if step < riker_pulse.shape[0]:
                 global_outer_force[riker_pulse_nid][1] = riker_pulse[step]
 
-            simulation_loop(
+            simulation_step(
                 mesh, 
                 tau,
                 global_outer_force, 
@@ -141,7 +134,7 @@ def main() -> None:
                 global_mass,
             )
 
-            visual_field = (global_mass.ravel()*(global_velocity[:, 0]**2 + global_velocity[:, 1]**2)).reshape(y_nodes_count, x_nodes_count)
+            visual_field = (global_mass[:, 0]*(global_velocity[:, 0]**2 + global_velocity[:, 1]**2)).reshape(y_nodes_count, x_nodes_count)
 
             print(step, time.time() - step_duration, time.time() - full_duration, np.sum(visual_field), np.max(visual_field))
 
@@ -162,7 +155,7 @@ def main() -> None:
             if step < riker_pulse.shape[0]:
                 global_outer_force[riker_pulse_nid][1] = riker_pulse[step]
 
-            simulation_loop(
+            simulation_step(
                 mesh, 
                 tau,
                 global_outer_force, 
