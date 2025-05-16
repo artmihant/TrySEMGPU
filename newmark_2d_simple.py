@@ -35,13 +35,8 @@ def simulation_loop(
     global_acceleration += global_outer_force/global_mass
 
     for element in mesh.elements:
-    
-        elem_displacement = global_displacement[element.nids]
 
-        elem_inner_force = element.array(DIM)
-
-        for la in range(len(element)):
-            elem_inner_force[la] += (element.k_matrix[la] @ (elem_displacement.reshape(-1, DIM, 1))).sum(0).reshape(DIM)
+        elem_inner_force = np.tensordot(element.k_matrix, global_displacement[element.nids], axes=([0,2],[0,1]))
 
         global_acceleration[element.nids] -= elem_inner_force / global_mass[element.nids]
 
