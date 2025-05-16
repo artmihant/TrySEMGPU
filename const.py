@@ -1,4 +1,5 @@
 from numpy.typing import NDArray
+from numba.cuda.cudadrv.devicearray import DeviceNDArray
 
 import numpy as np
 
@@ -9,11 +10,12 @@ import sys
 if sys.gettrace() is not None:
     VISUAL_MODE = False
 
-# VISUAL_MODE = False
+VISUAL_MODE = False
 
-FLOAT = np.float64
-INT = np.int64
+FLOAT = np.float32
+INT = np.int32
 DIM = 2
+THREADS_COUNT = 128
 
 FloatDxD = NDArray[FLOAT]
 
@@ -42,3 +44,11 @@ FloatE = NDArray[FLOAT]
 FloatT = NDArray[FLOAT]
 FloatENx1 = NDArray[FLOAT]
 
+DIntA = DeviceNDArray
+DIntE = DeviceNDArray
+DIntEN = DeviceNDArray
+DFloatS = DeviceNDArray
+DFloatSxSxD = DeviceNDArray
+DFloatNxD = DeviceNDArray
+DFloatNx1 = DeviceNDArray
+DFloatENx1 = DeviceNDArray
