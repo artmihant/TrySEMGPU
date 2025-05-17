@@ -45,19 +45,19 @@ def simulation_step(
 def main():
 
     # Порядок спектрального элемента
-    n_deg = 6
+    n_deg = 8
 
     # Физический размер пластины
-    plate_size = (10, 5)
+    plate_size = (40, 20)
 
     # Размер (квадратного) элемента
     single_element_size = 1
 
     # Сремя симуляции (сек)
-    total_simulation_time = 0.5
+    total_simulation_time = 1
 
     # Количество шагов симуляции
-    total_steps = 400
+    total_steps = 800
 
     # Шаг по времени
     tau = total_simulation_time/total_steps
@@ -83,8 +83,11 @@ def main():
     x_nodes_count = (grid_size[0]*n_deg + 1)
     y_nodes_count = (grid_size[1]*n_deg + 1)
 
+    print('compute_k_matrix')
+    full_duration = time.time()
     for element in mesh.elements:
         element.compute_k_matrix(constan_young, constan_poisson)
+    print(time.time() - full_duration)
 
     # Точка возмущения Рикера
     riker_pulse_amplitude = 100
