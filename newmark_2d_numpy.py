@@ -45,7 +45,7 @@ def simulation_step(
 def main():
 
     # Порядок спектрального элемента
-    n_deg = 3
+    n_deg = 6
 
     # Физический размер пластины
     plate_size = (10, 5)
@@ -149,8 +149,9 @@ def main():
 
     else:
         
+        full_duration = time.time()
         for step in range(total_steps):
-            step_duration = time.time()
+            # step_duration = time.time()
 
             if step < riker_pulse.shape[0]:
                 global_outer_force[riker_pulse_nid][1] = riker_pulse[step]
@@ -165,9 +166,9 @@ def main():
                 global_mass,
             )
 
-            print(step, time.time() - step_duration)
+            # print(step, time.time() - step_duration)
 
-
+        print(time.time() - full_duration)
 if __name__ == '__main__':
 
     main()

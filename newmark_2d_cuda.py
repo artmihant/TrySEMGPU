@@ -24,8 +24,8 @@ def compute_riker_pulse(f:float, A:float, t0:float, t1:float, dt:float) -> Float
 def change_acceleration(
         d_global_acceleration: DFloatNxD, 
         # dc_element_types_register: DIntA,
-        element_types_nabla_shapes: FloatSxSxD,
-        element_types_weights: FloatS,
+        d_element_types_nabla_shapes: DFloatSxSxD,
+        d_element_types_weights: DFloatS,
         d_elements_offsets: DIntA, 
         d_elements_families: DIntE, 
         d_elements_dims: DIntE, 
@@ -44,8 +44,8 @@ def change_acceleration(
     if eid >= elements_count:
         return
 
-    dc_element_types_nabla_shapes = cuda.const.array_like(element_types_nabla_shapes)
-    dc_element_types_weights = cuda.const.array_like(element_types_weights)
+    # dc_element_types_nabla_shapes = cuda.const.array_like(element_types_nabla_shapes)
+    # dc_element_types_weights = cuda.const.array_like(element_types_weights)
 
     # TODO: Add reading from element_types_register
     element_family = d_elements_families[eid]
@@ -63,8 +63,8 @@ def change_acceleration(
 
     nid = d_elements_nids[offset+nu]
 
-    element_weights = dc_element_types_weights #const
-    element_nabla_shapes  = dc_element_types_nabla_shapes #const
+    element_weights = d_element_types_weights #const
+    element_nabla_shapes  = d_element_types_nabla_shapes #const
 
     element_young = cuda.shared.array(128, dtype=float32)
     element_young[nu] = d_global_young[offset+nu, 0]
@@ -166,8 +166,8 @@ def change_velocity_and_displacement(
 
 def simulation_step(
         # dc_element_types_register: DIntA,
-        element_types_nabla_shapes: FloatSxSxD,
-        element_types_weights: FloatS,
+        d_element_types_nabla_shapes: FloatSxSxD,
+        d_element_types_weights: FloatS,
         d_elements_offsets: DIntA, 
         d_elements_families: DIntE, 
         d_elements_dims: DIntE, 
@@ -191,8 +191,8 @@ def simulation_step(
     change_acceleration[elements_count, THREADS_COUNT](
         d_global_acceleration,
         # dc_element_types_register,
-        element_types_nabla_shapes,
-        element_types_weights,
+        d_element_types_nabla_shapes,
+        d_element_types_weights,
         d_elements_offsets, 
         d_elements_families,
         d_elements_dims, 
@@ -218,6 +218,8 @@ def simulation_step(
 
 
 def main():
+    full_duration = time.time()
+    print('hello')
 
     # Порядок спектрального элемента
     n_deg = 7
@@ -229,10 +231,10 @@ def main():
     single_element_size = 1
 
     # Сремя симуляции (сек)
-    total_simulation_time = 0.5
+    total_simulation_time = 1
 
     # Количество шагов симуляции
-    total_steps = 400
+    total_steps = 800
 
     # Шаг по времени
     tau = total_simulation_time/total_steps
@@ -251,19 +253,27 @@ def main():
     # Скорость распространения волны в этом материале
     constant_Vp = (constan_young/constant_density*(1-constan_poisson)/(1+constan_poisson)/(1-2*constan_poisson))**0.5
     constant_Vs = (constan_young/constant_density/2/(1+constan_poisson))**0.5
+    print(time.time() - full_duration)
+    full_duration = time.time()
+    print('make task')
 
     # Генератор сетки
     mesh, elements_type = generate_spectral_mesh_2d_box(grid_size, single_element_size, start_point, n_deg)
     
     x_nodes_count = (grid_size[0]*n_deg + 1)
     y_nodes_count = (grid_size[1]*n_deg + 1)
+    print(time.time() - full_duration)
+    full_duration = time.time()
+    print('upload data')
 
-    for element in mesh.elements:
-        element.compute_k_matrix(constan_young, constan_poisson)
+    # print('compute_k_matrix')
+
+    # for element in mesh.elements:
+    #     element.compute_k_matrix(constan_young, constan_poisson)
 
     # Точка возмущения Рикера
     riker_pulse_amplitude = 100
-    riker_pulse_frequency = 5
+    riker_pulse_frequency = 10
 
     riker_pulse = compute_riker_pulse(riker_pulse_frequency, riker_pulse_amplitude, 0, total_simulation_time, tau)
 
@@ -319,14 +329,15 @@ def main():
     d_elements_degs = cuda.to_device(elements_degs)
     
     element_types_nabla_shapes = elements_type.nabla_shape
-    # dc_element_types_nabla_shapes = cuda.const.array_like(element_types_nabla_shapes)
+    d_element_types_nabla_shapes = cuda.to_device(elements_type.nabla_shape)
     
     element_types_weights = elements_type.weights
-    # dc_element_types_weights = cuda.const.array_like(element_types_weights)
+    d_element_types_weights = cuda.to_device(element_types_weights)
     
     element_types_register = np.array([1, 2, n_deg, 0, 0], INT)
     # dc_element_types_register = cuda.const.array_like(element_types_register)
 
+    # print('compute global_mass')
 
     if VISUAL_MODE:
 
@@ -342,13 +353,17 @@ def main():
 
             if step < riker_pulse.shape[0]:
                 global_outer_forces[riker_pulse_nid][1] = riker_pulse[step]
+                d_global_outer_forces.copy_to_device(global_outer_forces)
 
-            d_global_outer_forces.copy_to_device(global_outer_forces)
+
+            # if step < riker_pulse.shape[0]:
+            #     d_global_outer_forces[riker_pulse_nid:(riker_pulse_nid+1), 1:2].copy_to_device(np.array([[riker_pulse[step]]], dtype=np.float32))
+            
 
             simulation_step(
                 # element_types_register,
-                element_types_nabla_shapes,
-                element_types_weights,
+                d_element_types_nabla_shapes,
+                d_element_types_weights,
                 d_elements_offsets,
                 d_elements_families, 
                 d_elements_dims,
@@ -381,20 +396,25 @@ def main():
 
     else:
         
+        print(time.time() - full_duration)
         full_duration = time.time()
+
+        print('simulation start')
 
         for step in range(total_steps):
             # step_duration = time.time()
 
             if step < riker_pulse.shape[0]:
                 global_outer_forces[riker_pulse_nid][1] = riker_pulse[step]
-
-            d_global_outer_forces.copy_to_device(global_outer_forces)
+                d_global_outer_forces.copy_to_device(global_outer_forces)
+            
+            # if step < riker_pulse.shape[0]:
+            #     d_global_outer_forces[riker_pulse_nid:(riker_pulse_nid+1), 1:2].copy_to_device(np.array([[riker_pulse[step]]], dtype=np.float32))
             
             simulation_step(
                 # dc_element_types_register,
-                element_types_nabla_shapes,
-                element_types_weights,
+                d_element_types_nabla_shapes,
+                d_element_types_weights,
                 d_elements_offsets,
                 d_elements_families, 
                 d_elements_dims,
@@ -414,6 +434,7 @@ def main():
             # print(step, time.time() - step_duration)
 
         print(time.time() - full_duration)
+        print('success!')
 
 if __name__ == '__main__':
 
