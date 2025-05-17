@@ -11,7 +11,7 @@ if sys.gettrace() is not None:
 
 THREADS_COUNT = 1024
 
-# VISUAL_MODE = False
+VISUAL_MODE = False
 import time
 
 import numpy as np

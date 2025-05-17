@@ -10,7 +10,7 @@ from matplotlib.animation import FuncAnimation
 from const import *
 from test_mesh import generate_spectral_mesh_2d_box
 
-from numba import cuda
+from numba import cuda, float32
 
 def compute_riker_pulse(f:float, A:float, t0:float, t1:float, dt:float) -> FloatT:
     return \
@@ -23,9 +23,9 @@ def compute_riker_pulse(f:float, A:float, t0:float, t1:float, dt:float) -> Float
 @cuda.jit
 def change_acceleration(
         d_global_acceleration: DFloatNxD, 
-        d_element_types_register: DIntA,
-        d_element_types_nabla_shapes: DFloatSxSxD,
-        d_element_types_weights: DFloatS,
+        # dc_element_types_register: DIntA,
+        element_types_nabla_shapes: FloatSxSxD,
+        element_types_weights: FloatS,
         d_elements_offsets: DIntA, 
         d_elements_families: DIntE, 
         d_elements_dims: DIntE, 
@@ -41,73 +41,102 @@ def change_acceleration(
 
     elements_count = d_elements_dims.shape[0]
 
-    if eid > elements_count:
+    if eid >= elements_count:
         return
+
+    dc_element_types_nabla_shapes = cuda.const.array_like(element_types_nabla_shapes)
+    dc_element_types_weights = cuda.const.array_like(element_types_weights)
 
     # TODO: Add reading from element_types_register
     element_family = d_elements_families[eid]
     element_dim = d_elements_dims[eid]
     element_deg = d_elements_degs[eid]
 
-    offset_left = d_elements_offsets[eid]
-    offset_right = d_elements_offsets[eid+1]
+    offset = d_elements_offsets[eid]
     
-    nodes_count = offset_right-offset_left
+    nodes_count = d_elements_offsets[eid+1]-offset
 
     nu = cuda.threadIdx.x
 
     if nu >= nodes_count:
         return
 
-    nid = d_elements_nids[offset_left+nu]
+    nid = d_elements_nids[offset+nu]
 
-    element_weights = d_element_types_weights #const
-    element_nabla_shapes  = d_element_types_nabla_shapes #const
+    element_weights = dc_element_types_weights #const
+    element_nabla_shapes  = dc_element_types_nabla_shapes #const
 
-    element_young = d_global_young[offset_left:offset_right] #share
-    element_poisson = d_global_poisson[offset_left:offset_right] #share
+    element_young = cuda.shared.array(128, dtype=float32)
+    element_young[nu] = d_global_young[offset+nu, 0]
 
-    element_displacement = d_global_displacement[element_nids] #share
+    element_poisson = cuda.shared.array(THREADS_COUNT, FLOAT)
+    element_poisson[nu] = d_global_poisson[offset+nu, 0]
 
-    element_nodes:FloatSxD = d_global_nodes[element_nids] #share
+    element_displacement = cuda.shared.array((THREADS_COUNT, 2), FLOAT)
+    element_displacement[nu, 0] = d_global_displacement[nid, 0]
+    element_displacement[nu, 1] = d_global_displacement[nid, 1]
 
-    elem_accelerations = np.zeros((nodes_count, 2), FLOAT) #share
+    element_nodes = cuda.shared.array((THREADS_COUNT, 2), FLOAT)
+    element_nodes[nu, 0] = d_global_nodes[nid, 0]
+    element_nodes[nu, 1] = d_global_nodes[nid, 1]
+
+    elem_accelerations = cuda.shared.array((THREADS_COUNT, 2), FLOAT)
+    elem_accelerations[nu, 0] = 0
+    elem_accelerations[nu, 1] = 0
+
+    cuda.syncthreads() 
 
     for la in range(nodes_count):
+        
+        yacobi_0_0 = 0
+        yacobi_0_1 = 0
+        yacobi_1_0 = 0
+        yacobi_1_1 = 0
 
-        yacobi = element_nodes.transpose()@element_nabla_shapes[la]
-        antiyacobi = np.linalg.inv(yacobi)
-        weights = element_weights[la]*np.linalg.det(yacobi)
+        for mu in range(nodes_count):
+            yacobi_0_0 += element_nodes[mu,0]*element_nabla_shapes[la,mu,0]
+            yacobi_0_1 += element_nodes[mu,0]*element_nabla_shapes[la,mu,1]
+            yacobi_1_0 += element_nodes[mu,1]*element_nabla_shapes[la,mu,0]
+            yacobi_1_1 += element_nodes[mu,1]*element_nabla_shapes[la,mu,1]
+
+        yacobian = yacobi_0_0*yacobi_1_1 - yacobi_0_1*yacobi_1_0
+
+        inv_yacobian = 1.0 / yacobian
+
+        inv_yacobi_0_0 =  yacobi_1_1 * inv_yacobian
+        inv_yacobi_0_1 = -yacobi_0_1 * inv_yacobian
+        inv_yacobi_1_0 = -yacobi_1_0 * inv_yacobian
+        inv_yacobi_1_1 =  yacobi_0_0 * inv_yacobian
+
+        weights = element_weights[la]*yacobian
+
+        young = element_young[la]
+        poisson = element_poisson[la]
+
+        hooke_a = young*(1-poisson)/(1+poisson)/(1-2*poisson)
+        hooke_b = young*poisson/(1+poisson)/(1-2*poisson)
+        hooke_c = young/2/(1+poisson)
 
         for mu in range(nodes_count):
 
-            young = element_young[la][0]
-            poisson = element_poisson[la][0]
+            L_n_l_0 = element_nabla_shapes[la,nu,0]*inv_yacobi_0_0 + element_nabla_shapes[la,nu,1]*inv_yacobi_1_0
+            L_n_l_1 = element_nabla_shapes[la,nu,0]*inv_yacobi_0_1 + element_nabla_shapes[la,nu,1]*inv_yacobi_1_1
 
-            hooke_a = young*(1-poisson)/(1+poisson)/(1-2*poisson)
-            hooke_b = young*poisson/(1+poisson)/(1-2*poisson)
-            hooke_c = young/2/(1+poisson)
+            L_m_l_0 = element_nabla_shapes[la,mu,0]*inv_yacobi_0_0 + element_nabla_shapes[la,mu,1]*inv_yacobi_1_0
+            L_m_l_1 = element_nabla_shapes[la,mu,0]*inv_yacobi_0_1 + element_nabla_shapes[la,mu,1]*inv_yacobi_1_1
 
-            L_n_l = element_nabla_shapes[la][nu]@antiyacobi
-            L_m_l = element_nabla_shapes[la][mu]@antiyacobi
+            k_block_0_0 = hooke_a*L_n_l_0*L_m_l_0 + hooke_c*L_n_l_1*L_m_l_1
+            k_block_0_1 = hooke_b*L_n_l_0*L_m_l_1 + hooke_c*L_n_l_1*L_m_l_0
+            k_block_1_0 = hooke_b*L_n_l_1*L_m_l_0 + hooke_c*L_n_l_0*L_m_l_1
+            k_block_1_1 = hooke_a*L_n_l_1*L_m_l_1 + hooke_c*L_n_l_0*L_m_l_0
 
-            k_block = np.array([
-                [   
-                    hooke_a*L_n_l[0]*L_m_l[0] + hooke_c*L_n_l[1]*L_m_l[1], 
-                    hooke_b*L_n_l[0]*L_m_l[1] + hooke_c*L_n_l[1]*L_m_l[0]
-                ],
-                [
-                    hooke_b*L_n_l[1]*L_m_l[0] + hooke_c*L_n_l[0]*L_m_l[1], 
-                    hooke_a*L_n_l[1]*L_m_l[1] + hooke_c*L_n_l[0]*L_m_l[0]
-                ]
-            ], dtype=FLOAT)
-
-            elem_accelerations[nu] -= weights*k_block@element_displacement[mu] / d_global_mass[nid]
+            elem_accelerations[nu, 0] -= weights*(k_block_0_0*element_displacement[mu, 0] + k_block_0_1*element_displacement[mu, 1]) / d_global_mass[nid, 0]
+            elem_accelerations[nu, 1] -= weights*(k_block_1_0*element_displacement[mu, 0] + k_block_1_1*element_displacement[mu, 1]) / d_global_mass[nid, 0]
 
     cuda.atomic.add(d_global_acceleration, (nid, 0), elem_accelerations[nu, 0])
     cuda.atomic.add(d_global_acceleration, (nid, 1), elem_accelerations[nu, 1])
 
-
+    # cuda.atomic.add(d_global_acceleration, (1, 1), 1)
 
 
 @cuda.jit
@@ -136,9 +165,9 @@ def change_velocity_and_displacement(
 
 
 def simulation_step(
-        d_element_types_register: DIntA,
-        d_element_types_nabla_shapes: DFloatSxSxD,
-        d_element_types_weights: DFloatS,
+        # dc_element_types_register: DIntA,
+        element_types_nabla_shapes: FloatSxSxD,
+        element_types_weights: FloatS,
         d_elements_offsets: DIntA, 
         d_elements_families: DIntE, 
         d_elements_dims: DIntE, 
@@ -161,11 +190,11 @@ def simulation_step(
 
     change_acceleration[elements_count, THREADS_COUNT](
         d_global_acceleration,
-        d_element_types_register,
-        d_element_types_nabla_shapes,
-        d_element_types_weights,
-        d_elements_families,
+        # dc_element_types_register,
+        element_types_nabla_shapes,
+        element_types_weights,
         d_elements_offsets, 
+        d_elements_families,
         d_elements_dims, 
         d_elements_degs, 
         d_elements_nids,    
@@ -191,7 +220,7 @@ def simulation_step(
 def main():
 
     # Порядок спектрального элемента
-    n_deg = 5
+    n_deg = 7
 
     # Физический размер пластины
     plate_size = (20, 10)
@@ -290,13 +319,14 @@ def main():
     d_elements_degs = cuda.to_device(elements_degs)
     
     element_types_nabla_shapes = elements_type.nabla_shape
-    d_element_types_nabla_shapes = cuda.to_device(element_types_nabla_shapes)
+    # dc_element_types_nabla_shapes = cuda.const.array_like(element_types_nabla_shapes)
     
     element_types_weights = elements_type.weights
-    d_element_types_weights = cuda.to_device(element_types_weights)
+    # dc_element_types_weights = cuda.const.array_like(element_types_weights)
     
     element_types_register = np.array([1, 2, n_deg, 0, 0], INT)
-    d_element_types_register = cuda.to_device(element_types_register)
+    # dc_element_types_register = cuda.const.array_like(element_types_register)
+
 
     if VISUAL_MODE:
 
@@ -316,9 +346,9 @@ def main():
             d_global_outer_forces.copy_to_device(global_outer_forces)
 
             simulation_step(
-                d_element_types_register,
-                d_element_types_nabla_shapes,
-                d_element_types_weights,
+                # element_types_register,
+                element_types_nabla_shapes,
+                element_types_weights,
                 d_elements_offsets,
                 d_elements_families, 
                 d_elements_dims,
@@ -362,9 +392,9 @@ def main():
             d_global_outer_forces.copy_to_device(global_outer_forces)
             
             simulation_step(
-                d_element_types_register,
-                d_element_types_nabla_shapes,
-                d_element_types_weights,
+                # dc_element_types_register,
+                element_types_nabla_shapes,
+                element_types_weights,
                 d_elements_offsets,
                 d_elements_families, 
                 d_elements_dims,
