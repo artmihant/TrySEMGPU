@@ -223,10 +223,9 @@ def main():
 
     # Порядок спектрального элемента
     n_deg = 7
-    m_deg = 5
 
     # Физический размер пластины
-    plate_size = (100, 50)
+    plate_size = (20, 10)
 
     # Размер (квадратного) элемента
     single_element_size = 1
@@ -235,7 +234,7 @@ def main():
     total_simulation_time = 1
 
     # Количество шагов симуляции
-    total_steps = 1
+    total_steps = 800
 
     # Шаг по времени
     tau = total_simulation_time/total_steps
