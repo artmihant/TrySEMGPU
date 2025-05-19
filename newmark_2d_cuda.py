@@ -63,8 +63,8 @@ def change_acceleration(
 
     nid = d_elements_nids[offset+nu]
 
-    element_weights = d_element_types_weights #const
-    element_nabla_shapes  = d_element_types_nabla_shapes #const
+    element_weights = d_element_types_weights 
+    element_nabla_shapes  = d_element_types_nabla_shapes 
 
     element_young = cuda.shared.array(128, dtype=float32)
     element_young[nu] = d_global_young[offset+nu, 0]
@@ -117,26 +117,25 @@ def change_acceleration(
         hooke_b = young*poisson/(1+poisson)/(1-2*poisson)
         hooke_c = young/2/(1+poisson)
 
-        # for mu in range(nodes_count):
+        for mu in range(nodes_count):
 
-        #     L_n_l_0 = element_nabla_shapes[la,nu,0]*inv_yacobi_0_0 + element_nabla_shapes[la,nu,1]*inv_yacobi_1_0
-        #     L_n_l_1 = element_nabla_shapes[la,nu,0]*inv_yacobi_0_1 + element_nabla_shapes[la,nu,1]*inv_yacobi_1_1
+            L_n_l_0 = element_nabla_shapes[la,nu,0]*inv_yacobi_0_0 + element_nabla_shapes[la,nu,1]*inv_yacobi_1_0
+            L_n_l_1 = element_nabla_shapes[la,nu,0]*inv_yacobi_0_1 + element_nabla_shapes[la,nu,1]*inv_yacobi_1_1
 
-        #     L_m_l_0 = element_nabla_shapes[la,mu,0]*inv_yacobi_0_0 + element_nabla_shapes[la,mu,1]*inv_yacobi_1_0
-        #     L_m_l_1 = element_nabla_shapes[la,mu,0]*inv_yacobi_0_1 + element_nabla_shapes[la,mu,1]*inv_yacobi_1_1
+            L_m_l_0 = element_nabla_shapes[la,mu,0]*inv_yacobi_0_0 + element_nabla_shapes[la,mu,1]*inv_yacobi_1_0
+            L_m_l_1 = element_nabla_shapes[la,mu,0]*inv_yacobi_0_1 + element_nabla_shapes[la,mu,1]*inv_yacobi_1_1
 
-        #     k_block_0_0 = hooke_a*L_n_l_0*L_m_l_0 + hooke_c*L_n_l_1*L_m_l_1
-        #     k_block_0_1 = hooke_b*L_n_l_0*L_m_l_1 + hooke_c*L_n_l_1*L_m_l_0
-        #     k_block_1_0 = hooke_b*L_n_l_1*L_m_l_0 + hooke_c*L_n_l_0*L_m_l_1
-        #     k_block_1_1 = hooke_a*L_n_l_1*L_m_l_1 + hooke_c*L_n_l_0*L_m_l_0
+            k_block_0_0 = hooke_a*L_n_l_0*L_m_l_0 + hooke_c*L_n_l_1*L_m_l_1
+            k_block_0_1 = hooke_b*L_n_l_0*L_m_l_1 + hooke_c*L_n_l_1*L_m_l_0
+            k_block_1_0 = hooke_b*L_n_l_1*L_m_l_0 + hooke_c*L_n_l_0*L_m_l_1
+            k_block_1_1 = hooke_a*L_n_l_1*L_m_l_1 + hooke_c*L_n_l_0*L_m_l_0
 
-        #     elem_accelerations[nu, 0] -= weights*(k_block_0_0*element_displacement[mu, 0] + k_block_0_1*element_displacement[mu, 1]) / d_global_mass[nid, 0]
-        #     elem_accelerations[nu, 1] -= weights*(k_block_1_0*element_displacement[mu, 0] + k_block_1_1*element_displacement[mu, 1]) / d_global_mass[nid, 0]
+            elem_accelerations[nu, 0] -= weights*(k_block_0_0*element_displacement[mu, 0] + k_block_0_1*element_displacement[mu, 1]) / d_global_mass[nid, 0]
+            elem_accelerations[nu, 1] -= weights*(k_block_1_0*element_displacement[mu, 0] + k_block_1_1*element_displacement[mu, 1]) / d_global_mass[nid, 0]
 
     cuda.atomic.add(d_global_acceleration, (nid, 0), elem_accelerations[nu, 0])
     cuda.atomic.add(d_global_acceleration, (nid, 1), elem_accelerations[nu, 1])
 
-    # cuda.atomic.add(d_global_acceleration, (1, 1), 1)
 
 
 @cuda.jit
@@ -225,7 +224,7 @@ def main():
     n_deg = 7
 
     # Физический размер пластины
-    plate_size = (100, 50)
+    plate_size = (20, 10)
 
     # Размер (квадратного) элемента
     single_element_size = 1
@@ -234,7 +233,7 @@ def main():
     total_simulation_time = 1
 
     # Количество шагов симуляции
-    total_steps = 1
+    total_steps = 800
 
     # Шаг по времени
     tau = total_simulation_time/total_steps
@@ -344,7 +343,7 @@ def main():
         visual_field = np.zeros((y_nodes_count, x_nodes_count), dtype=FLOAT)
 
         fig, ax = plt.subplots()
-        im = ax.imshow(visual_field, cmap='viridis', vmin=0, vmax=0.001)
+        im = ax.imshow(visual_field, cmap='viridis', vmin=0, vmax=0.0005)
         
         full_duration = time.time()
         
