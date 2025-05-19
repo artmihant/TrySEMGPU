@@ -225,7 +225,7 @@ def main():
     n_deg = 7
 
     # Физический размер пластины
-    plate_size = (20, 10)
+    plate_size = (40, 20)
 
     # Размер (квадратного) элемента
     single_element_size = 1
@@ -402,7 +402,7 @@ def main():
         print('simulation start')
 
         for step in range(total_steps):
-            # step_duration = time.time()
+            step_duration = time.time()
 
             if step < riker_pulse.shape[0]:
                 global_outer_forces[riker_pulse_nid][1] = riker_pulse[step]
@@ -432,7 +432,7 @@ def main():
             )
 
             global_velocity = d_global_velocity.copy_to_host()
-            # print(step, time.time() - step_duration)
+            print(step, time.time() - step_duration)
 
         print(time.time() - full_duration)
         print('success!')

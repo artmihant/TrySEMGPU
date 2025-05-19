@@ -45,7 +45,7 @@ def simulation_step(
 def main():
 
     # Порядок спектрального элемента
-    n_deg = 6
+    n_deg = 7
 
     # Физический размер пластины
     plate_size = (20, 10)
@@ -57,7 +57,7 @@ def main():
     total_simulation_time = 1
 
     # Количество шагов симуляции
-    total_steps = 800
+    total_steps = 428
 
     # Шаг по времени
     tau = total_simulation_time/total_steps
