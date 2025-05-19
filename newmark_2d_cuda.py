@@ -224,7 +224,7 @@ def main():
     n_deg = 7
 
     # Физический размер пластины
-    plate_size = (20, 10)
+    plate_size = (100, 50)
 
     # Размер (квадратного) элемента
     single_element_size = 1

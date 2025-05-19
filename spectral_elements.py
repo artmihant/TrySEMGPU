@@ -222,6 +222,9 @@ class SpectralElement:
     nids: IntS
     k_matrix: FloatSxSxDxD
     weights: FloatSx1
+    yacobi: FloatSxDxD
+    inv_yacobi: FloatSxDxD
+    yacobians: FloatS
 
     def __init__(self, global_nodes: FloatNxD, nids: IntS, element_type: SpectralElementType):
         assert nids.shape[0] == element_type.xi_nodes.shape[0]
@@ -230,9 +233,11 @@ class SpectralElement:
         self.nids = nids
         self.element_type = element_type
 
-        yacobians = compute_yacobians(self.nodes, element_type.nabla_shape)
+        self.yacobi = compute_yacobi_ms(self.nodes, element_type.nabla_shape)
+        self.yacobians = compute_yacobians(self.nodes, element_type.nabla_shape)
+        self.inv_yacobi = compute_antiyacobi_ms(self.nodes, element_type.nabla_shape)
 
-        self.weights = (element_type.weights*yacobians).reshape(-1,1)
+        self.weights = (element_type.weights*self.yacobians).reshape(-1,1)
 
         n_nodes = len(self)
 
@@ -390,10 +395,6 @@ class SpectralElement2:
         return self.element_type.nabla_shape@antiyacobi_ms
 
 
-
-
-
-
 class SpectralMesh:
 
     elements: list[SpectralElement]
@@ -434,8 +435,8 @@ class SpectralMesh:
     def elems_array(self, dim, dtype=FLOAT):
         return np.zeros((len(self.elements),dim), dtype=dtype)
 
-    def nids_array(self, dim, dtype=FLOAT):
-        return np.zeros((len(self.nids),dim), dtype=dtype)
+    def nids_array(self, *dim, dtype=FLOAT):
+        return np.zeros((len(self.nids),*dim), dtype=dtype)
 
     def get_elements_families(self) -> IntE:
         elements_families = np.zeros(len(self.elements), dtype=INT)

@@ -46,9 +46,12 @@ FloatENx1 = NDArray[FLOAT]
 
 DIntA = DeviceNDArray
 DIntE = DeviceNDArray
+DFloatEx1 = DeviceNDArray
 DIntEN = DeviceNDArray
 DFloatS = DeviceNDArray
 DFloatSxSxD = DeviceNDArray
 DFloatNxD = DeviceNDArray
 DFloatNx1 = DeviceNDArray
 DFloatENx1 = DeviceNDArray
+DFloatEN = DeviceNDArray
+DFloatENxDxD = DeviceNDArray
