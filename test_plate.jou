@@ -1,5 +1,5 @@
 reset
-create surface rectangle width 40 height 20 zplane 
+create surface rectangle width 100 height 50 zplane 
 surface 1  size 1
 mesh surface 1 
 create material 1
@@ -9,7 +9,7 @@ modify material 1 set property 'POISSON' value 0.25
 modify material 1 set property 'DENSITY' value 1000
 
 block 1 add surface 1 
-block 1  material 1 cs 1 element plane order 7
+block 1  material 1 cs 1 element plane order 8
 
 create force  on node 42 force value 1 direction 0 1 0
 bcdep force 1 value 'ricker(100, 5, 0, time)'

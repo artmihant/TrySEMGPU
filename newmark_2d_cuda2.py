@@ -10,7 +10,7 @@ from matplotlib.animation import FuncAnimation
 from const import *
 from test_mesh import generate_spectral_mesh_2d_box
 
-from numba import cuda, float32
+from numba import cuda
 
 def compute_riker_pulse(f:float, A:float, t0:float, t1:float, dt:float) -> FloatT:
     return \
@@ -69,7 +69,7 @@ def change_acceleration(
 
     nid = d_elements_nids[offset+nu]
 
-    element_nabla_shapes  = d_element_types_nabla_shapes 
+    element_type_nabla_shapes  = d_element_types_nabla_shapes 
 
     young = d_global_young[eid, 0]
 
@@ -87,9 +87,9 @@ def change_acceleration(
     element_nodes[nu, 0] = d_global_nodes[nid, 0]
     element_nodes[nu, 1] = d_global_nodes[nid, 1]
 
-    elem_accelerations = cuda.shared.array((THREADS_COUNT, 2), FLOAT)
-    elem_accelerations[nu, 0] = 0
-    elem_accelerations[nu, 1] = 0
+    # elem_accelerations = cuda.shared.array((THREADS_COUNT, 2), FLOAT)
+    # elem_accelerations[nu, 0] = 0
+    # elem_accelerations[nu, 1] = 0
 
     element_weights = cuda.shared.array(THREADS_COUNT, FLOAT)
     element_weights[nu] = d_elements_weights[offset+nu, 0]
@@ -101,28 +101,62 @@ def change_acceleration(
     element_inv_yacobi[nu, 1, 1] = d_elements_inv_yacobi[offset+nu, 1, 1]
 
 
+    element_nabla_shapes_la = cuda.shared.array((THREADS_COUNT, 2), FLOAT)
+
+    mass = d_global_mass[nid, 0]
+
+    elem_accelerations_x = FLOAT(0.0)
+    elem_accelerations_y = FLOAT(0.0)
+    elem_accelerations_la_x = FLOAT(0.0)
+    elem_accelerations_la_y = FLOAT(0.0)
+    elem_accelerations_la_mu_x = FLOAT(0.0)
+    elem_accelerations_la_y = FLOAT(0.0)
+    
     cuda.syncthreads() 
-
+ 
     for la in range(nodes_count):
+ 
+        element_nabla_shapes_la[nu, 0] = element_type_nabla_shapes[la,nu,0]*element_inv_yacobi[la, 0, 0] + element_type_nabla_shapes[la,nu,
+        1]*element_inv_yacobi[la, 1, 0]
+        element_nabla_shapes_la[nu, 1] = element_type_nabla_shapes[la,nu,0]*element_inv_yacobi[la, 0, 1] + element_type_nabla_shapes[la,nu,1]*element_inv_yacobi[la, 1, 1]
 
-        L_n_l_0 = element_nabla_shapes[la,nu,0]*element_inv_yacobi[la, 0, 0] + element_nabla_shapes[la,nu,1]*element_inv_yacobi[la, 1, 0]
-        L_n_l_1 = element_nabla_shapes[la,nu,0]*element_inv_yacobi[la, 0, 1] + element_nabla_shapes[la,nu,1]*element_inv_yacobi[la, 1, 1]
+        cuda.syncthreads() 
+
+        elem_accelerations_la_x = FLOAT(0.0)
+        elem_accelerations_la_y = FLOAT(0.0)
 
         for mu in range(nodes_count):
 
-            L_m_l_0 = element_nabla_shapes[la,mu,0]*element_inv_yacobi[la, 0, 0] + element_nabla_shapes[la,mu,1]*element_inv_yacobi[la, 1, 0]
-            L_m_l_1 = element_nabla_shapes[la,mu,0]*element_inv_yacobi[la, 0, 1] + element_nabla_shapes[la,mu,1]*element_inv_yacobi[la, 1, 1]
+            L_m_l_0 = element_nabla_shapes_la[mu, 0]
+            L_m_l_1 = element_nabla_shapes_la[mu, 1]
+
+            L_n_l_0 = element_nabla_shapes_la[nu, 0]
+            L_n_l_1 = element_nabla_shapes_la[nu, 1]
 
             k_block_0_0 = hooke_a*L_n_l_0*L_m_l_0 + hooke_c*L_n_l_1*L_m_l_1
             k_block_0_1 = hooke_b*L_n_l_0*L_m_l_1 + hooke_c*L_n_l_1*L_m_l_0
             k_block_1_0 = hooke_b*L_n_l_1*L_m_l_0 + hooke_c*L_n_l_0*L_m_l_1
             k_block_1_1 = hooke_a*L_n_l_1*L_m_l_1 + hooke_c*L_n_l_0*L_m_l_0
 
-            elem_accelerations[nu, 0] -= element_weights[la]*(k_block_0_0*element_displacement[mu, 0] + k_block_0_1*element_displacement[mu, 1]) / d_global_mass[nid, 0]
-            elem_accelerations[nu, 1] -= element_weights[la]*(k_block_1_0*element_displacement[mu, 0] + k_block_1_1*element_displacement[mu, 1]) / d_global_mass[nid, 0]
+            (element_displacement_x, element_displacement_y) = element_displacement[mu]
 
-    cuda.atomic.add(d_global_acceleration, (nid, 0), elem_accelerations[nu, 0])
-    cuda.atomic.add(d_global_acceleration, (nid, 1), elem_accelerations[nu, 1])
+            elem_accelerations_la_mu_x = (k_block_0_0*element_displacement_x + k_block_0_1*element_displacement_y)
+            elem_accelerations_la_mu_y = (k_block_1_0*element_displacement_x + k_block_1_1*element_displacement_y)
+
+            elem_accelerations_la_x += elem_accelerations_la_mu_x
+            elem_accelerations_la_y += elem_accelerations_la_mu_y
+
+
+        weight = element_weights[la] / mass
+
+        elem_accelerations_x += weight*elem_accelerations_la_x    
+        elem_accelerations_y += weight*elem_accelerations_la_y    
+
+        cuda.syncthreads()         
+
+
+    cuda.atomic.sub(d_global_acceleration, (nid, 0), elem_accelerations_x)
+    cuda.atomic.sub(d_global_acceleration, (nid, 1), elem_accelerations_y)
 
 
 
@@ -214,7 +248,7 @@ def main():
     n_deg = 7
 
     # Физический размер пластины
-    plate_size = (100, 50)
+    plate_size = (20, 10)
 
     # Размер (квадратного) элемента
     single_element_size = 1
@@ -400,7 +434,7 @@ def main():
         print('simulation start')
 
         for step in range(total_steps):
-            # step_duration = time.time()
+            step_duration = time.time()
 
             if step < riker_pulse.shape[0]:
                 global_outer_forces[riker_pulse_nid][1] = riker_pulse[step]
@@ -431,7 +465,7 @@ def main():
             )
 
             global_velocity = d_global_velocity.copy_to_host()
-            # print(step, time.time() - step_duration)
+            print(step, time.time() - step_duration)
 
         print(time.time() - full_duration)
         print('success!')
