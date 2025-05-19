@@ -117,21 +117,21 @@ def change_acceleration(
         hooke_b = young*poisson/(1+poisson)/(1-2*poisson)
         hooke_c = young/2/(1+poisson)
 
-        # for mu in range(nodes_count):
+        for mu in range(nodes_count):
 
-        #     L_n_l_0 = element_nabla_shapes[la,nu,0]*inv_yacobi_0_0 + element_nabla_shapes[la,nu,1]*inv_yacobi_1_0
-        #     L_n_l_1 = element_nabla_shapes[la,nu,0]*inv_yacobi_0_1 + element_nabla_shapes[la,nu,1]*inv_yacobi_1_1
+            L_n_l_0 = element_nabla_shapes[la,nu,0]*inv_yacobi_0_0 + element_nabla_shapes[la,nu,1]*inv_yacobi_1_0
+            L_n_l_1 = element_nabla_shapes[la,nu,0]*inv_yacobi_0_1 + element_nabla_shapes[la,nu,1]*inv_yacobi_1_1
 
-        #     L_m_l_0 = element_nabla_shapes[la,mu,0]*inv_yacobi_0_0 + element_nabla_shapes[la,mu,1]*inv_yacobi_1_0
-        #     L_m_l_1 = element_nabla_shapes[la,mu,0]*inv_yacobi_0_1 + element_nabla_shapes[la,mu,1]*inv_yacobi_1_1
+            L_m_l_0 = element_nabla_shapes[la,mu,0]*inv_yacobi_0_0 + element_nabla_shapes[la,mu,1]*inv_yacobi_1_0
+            L_m_l_1 = element_nabla_shapes[la,mu,0]*inv_yacobi_0_1 + element_nabla_shapes[la,mu,1]*inv_yacobi_1_1
 
-        #     k_block_0_0 = hooke_a*L_n_l_0*L_m_l_0 + hooke_c*L_n_l_1*L_m_l_1
-        #     k_block_0_1 = hooke_b*L_n_l_0*L_m_l_1 + hooke_c*L_n_l_1*L_m_l_0
-        #     k_block_1_0 = hooke_b*L_n_l_1*L_m_l_0 + hooke_c*L_n_l_0*L_m_l_1
-        #     k_block_1_1 = hooke_a*L_n_l_1*L_m_l_1 + hooke_c*L_n_l_0*L_m_l_0
+            k_block_0_0 = hooke_a*L_n_l_0*L_m_l_0 + hooke_c*L_n_l_1*L_m_l_1
+            k_block_0_1 = hooke_b*L_n_l_0*L_m_l_1 + hooke_c*L_n_l_1*L_m_l_0
+            k_block_1_0 = hooke_b*L_n_l_1*L_m_l_0 + hooke_c*L_n_l_0*L_m_l_1
+            k_block_1_1 = hooke_a*L_n_l_1*L_m_l_1 + hooke_c*L_n_l_0*L_m_l_0
 
-        #     elem_accelerations[nu, 0] -= weights*(k_block_0_0*element_displacement[mu, 0] + k_block_0_1*element_displacement[mu, 1]) / d_global_mass[nid, 0]
-        #     elem_accelerations[nu, 1] -= weights*(k_block_1_0*element_displacement[mu, 0] + k_block_1_1*element_displacement[mu, 1]) / d_global_mass[nid, 0]
+            elem_accelerations[nu, 0] -= weights*(k_block_0_0*element_displacement[mu, 0] + k_block_0_1*element_displacement[mu, 1]) / d_global_mass[nid, 0]
+            elem_accelerations[nu, 1] -= weights*(k_block_1_0*element_displacement[mu, 0] + k_block_1_1*element_displacement[mu, 1]) / d_global_mass[nid, 0]
 
     cuda.atomic.add(d_global_acceleration, (nid, 0), elem_accelerations[nu, 0])
     cuda.atomic.add(d_global_acceleration, (nid, 1), elem_accelerations[nu, 1])
@@ -223,6 +223,7 @@ def main():
 
     # Порядок спектрального элемента
     n_deg = 7
+    m_deg = 5
 
     # Физический размер пластины
     plate_size = (100, 50)

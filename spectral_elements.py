@@ -2,10 +2,9 @@ from typing import Any, Generator, Iterator
 import numpy as np
 from const import *
 
-from numpy.polynomial.legendre import legroots, legder, legval
+from numpy.polynomial.legendre import legroots, legder, legval, leggauss
 from scipy.interpolate import lagrange
 from itertools import product
-
 
 def compute_gll_points_and_weights(n_deg: int) -> tuple[FloatS, FloatS]:
 
@@ -146,6 +145,66 @@ class SpectralElementType:
         return self.xi_nodes.shape
 
 
+
+class SpectralElementType2:
+
+    dim: int
+    family: int
+    
+    n_deg: int
+    n_weights: FloatS
+    n_nabla_shape: FloatSxSxD
+    n_xi_nodes: FloatS
+    
+    m_deg: int
+    m_weights: FloatS
+    m_nabla_shape: FloatSxSxD
+    m_xi_nodes: FloatS
+
+    def __init__(self, family: int, dim: int, n_deg: int, m_deg: int):
+
+        self.family = family
+        self.dim = dim
+        self.n_deg = n_deg
+        self.m_deg = m_deg
+
+        if family == 1: # кубы
+
+            gll_nodes, gll_weights = compute_gll_points_and_weights(n_deg)
+            gauss_nodes, gauss_weights = leggauss(m_deg+1)
+
+            if dim == 1:
+                self.n_xi_nodes = compute_cube_1d_xinodes(gll_nodes)
+                self.n_nabla_shape = compute_cube_1d_nabla_shape(gll_nodes)
+                self.n_weights = compute_cube_1d_weights(gll_weights)
+
+                self.m_xi_nodes = compute_cube_1d_xinodes(gauss_nodes)
+                self.m_nabla_shape = compute_cube_1d_nabla_shape(gauss_nodes)
+                self.m_weights = compute_cube_1d_weights(gauss_weights)
+
+            elif dim == 2:
+                self.n_xi_nodes = compute_cube_2d_xinodes(gll_nodes)
+                self.n_nabla_shape = compute_cube_2d_nabla_shape(gll_nodes)
+                self.n_weights = compute_cube_2d_weights(gll_weights)
+
+                self.m_xi_nodes = compute_cube_2d_xinodes(gauss_nodes)
+                self.m_nabla_shape = compute_cube_2d_nabla_shape(gauss_nodes)
+                self.m_weights = compute_cube_2d_weights(gauss_weights)
+
+            else:
+                raise Exception(f'{dim}D not supported!')
+        else:
+            raise Exception(f'Family {family} not supported!')
+
+
+    def __len__(self):
+        return self.n_xi_nodes.shape[0]
+
+    @property
+    def shape(self):
+        return self.n_xi_nodes.shape
+
+
 def compute_yacobians(coord: FloatSxD, nabla_shape: FloatSxSxD)-> FloatS:
     return np.linalg.det(compute_yacobi_ms(coord, nabla_shape))
 
@@ -272,6 +331,67 @@ class SpectralElement:
                     )).sum(0)
 
                     self.k_matrix[la, mu] = k_matrix_block
+
+
+class SpectralElement2:
+
+    element_type: SpectralElementType2
+    global_nodes: FloatSxD
+    nids: IntS
+    k_matrix: FloatSxSxDxD
+    weights: FloatSx1
+
+    def __init__(self, global_nodes: FloatNxD, nids: IntS, element_type: SpectralElementType2):
+        assert nids.shape[0] == len(element_type)
+
+        self.global_nodes = global_nodes
+        self.nids = nids
+        self.element_type = element_type
+
+        yacobians = compute_yacobians(self.nodes, element_type.n_nabla_shape)
+
+        self.n_weights = (element_type.n_weights*yacobians).reshape(-1,1)
+
+        n_nodes = len(self)
+
+        self.k_matrix = np.zeros((n_nodes, n_nodes, self.dim, self.dim), dtype=FLOAT)
+
+    @property
+    def nodes(self) -> FloatSxD:
+        return self.global_nodes[self.nids]
+
+    def __len__(self):
+        return self.nids.shape[0]
+    
+    @property
+    def nodes_count(self):
+        return self.nodes.shape[0]
+
+    def shape(self):
+        return self.nodes.shape
+
+    @property
+    def dim(self):
+        return self.element_type.dim
+    
+    @property
+    def deg(self):
+        return self.element_type.deg
+        
+    @property
+    def family(self):
+        return self.element_type.family
+    
+    def array(self, dim, dtype=FLOAT):
+        return np.zeros((self.nodes_count,dim), dtype=dtype)
+
+    def nabla_shape(self):
+        antiyacobi_ms = compute_antiyacobi_ms(self.nodes, self.element_type.nabla_shape)
+        return self.element_type.nabla_shape@antiyacobi_ms
+
+
+
+
 
 
 class SpectralMesh:
