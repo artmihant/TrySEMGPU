@@ -10,7 +10,7 @@ import sys
 if sys.gettrace() is not None:
     VISUAL_MODE = False
 
-# VISUAL_MODE = False
+VISUAL_MODE = False
 
 FLOAT = np.float32
 INT = np.int32

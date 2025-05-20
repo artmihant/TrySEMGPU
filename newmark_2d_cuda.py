@@ -45,11 +45,6 @@ def change_acceleration(
     if eid >= elements_count:
         return
 
-    # TODO 
-    # 1) Загрузить и выгрузить якобианы 
-    # 2) Уменьшить мерность упругих модулей 
-    # 3) 
-
     # dc_element_types_nabla_shapes = cuda.const.array_like(element_types_nabla_shapes)
     # dc_element_types_weights = cuda.const.array_like(element_types_weights)
 
@@ -69,94 +64,75 @@ def change_acceleration(
 
     nid = d_elements_nids[offset+nu]
 
-    element_type_nabla_shapes  = d_element_types_nabla_shapes 
+    nabla_shapes  = d_element_types_nabla_shapes 
 
     young = d_global_young[eid, 0]
 
     poisson = d_global_poisson[eid, 0]
 
-    hooke_a = young*(1-poisson)/(1+poisson)/(1-2*poisson)
-    hooke_b = young*poisson/(1+poisson)/(1-2*poisson)
-    hooke_c = young/2/(1+poisson)
+    lame_la = young*poisson/((1+poisson)*(1-2*poisson))
+    lame_mu = young/(2*(1+poisson))
 
-    element_displacement = cuda.shared.array((THREADS_COUNT, 2), FLOAT)
-    element_displacement[nu, 0] = d_global_displacement[nid, 0]
-    element_displacement[nu, 1] = d_global_displacement[nid, 1]
+    nodes = cuda.shared.array((THREADS_COUNT, 2), FLOAT)
+    nodes[nu, 0] = d_global_nodes[nid, 0]
+    nodes[nu, 1] = d_global_nodes[nid, 1]
 
-    element_nodes = cuda.shared.array((THREADS_COUNT, 2), FLOAT)
-    element_nodes[nu, 0] = d_global_nodes[nid, 0]
-    element_nodes[nu, 1] = d_global_nodes[nid, 1]
+    displacement = cuda.shared.array((THREADS_COUNT, 2), FLOAT)
+    displacement[nu, 0] = d_global_displacement[nid, 0]
+    displacement[nu, 1] = d_global_displacement[nid, 1]
 
-    # elem_accelerations = cuda.shared.array((THREADS_COUNT, 2), FLOAT)
-    # elem_accelerations[nu, 0] = 0
-    # elem_accelerations[nu, 1] = 0
+    weights = cuda.shared.array(THREADS_COUNT, FLOAT)
+    weights[nu] = d_elements_weights[offset+nu, 0]
 
-    element_weights = cuda.shared.array(THREADS_COUNT, FLOAT)
-    element_weights[nu] = d_elements_weights[offset+nu, 0]
+    inv_yacobi = cuda.shared.array((THREADS_COUNT, 2, 2), FLOAT)
+    inv_yacobi[nu, 0, 0] = d_elements_inv_yacobi[offset+nu, 0, 0]
+    inv_yacobi[nu, 0, 1] = d_elements_inv_yacobi[offset+nu, 0, 1]
+    inv_yacobi[nu, 1, 0] = d_elements_inv_yacobi[offset+nu, 1, 0]
+    inv_yacobi[nu, 1, 1] = d_elements_inv_yacobi[offset+nu, 1, 1]
+    
+    theta = cuda.shared.array((THREADS_COUNT, 2,2), FLOAT)
 
-    element_inv_yacobi = cuda.shared.array((THREADS_COUNT, 2, 2), FLOAT)
-    element_inv_yacobi[nu, 0, 0] = d_elements_inv_yacobi[offset+nu, 0, 0]
-    element_inv_yacobi[nu, 0, 1] = d_elements_inv_yacobi[offset+nu, 0, 1]
-    element_inv_yacobi[nu, 1, 0] = d_elements_inv_yacobi[offset+nu, 1, 0]
-    element_inv_yacobi[nu, 1, 1] = d_elements_inv_yacobi[offset+nu, 1, 1]
+    cuda.syncthreads() 
+ 
+    dUxdx = 0
+    dUxdy = 0
+    dUydx = 0
+    dUydy = 0
 
+    for mu in range(nodes_count):
 
-    element_nabla_shapes_la = cuda.shared.array((THREADS_COUNT, 2), FLOAT)
+        nabla_shape_nu_mu_0 = nabla_shapes[nu,mu,0]*inv_yacobi[nu, 0, 0] + nabla_shapes[nu,mu,1]*inv_yacobi[nu, 1, 0]
+        nabla_shape_nu_mu_1 = nabla_shapes[nu,mu,0]*inv_yacobi[nu, 0, 1] + nabla_shapes[nu,mu,1]*inv_yacobi[nu, 1, 1]
+
+        dUxdx += displacement[mu, 0]*nabla_shape_nu_mu_0
+        dUxdy += displacement[mu, 0]*nabla_shape_nu_mu_1
+
+        dUydx += displacement[mu, 1]*nabla_shape_nu_mu_0
+        dUydy += displacement[mu, 1]*nabla_shape_nu_mu_1
+
+    sigma_xx = lame_la * (dUxdx + dUydy) + 2 * lame_mu * dUxdx
+    sigma_yy = lame_la * (dUxdx + dUydy) + 2 * lame_mu * dUydy
+    sigma_xy = lame_mu * (dUxdy + dUydx)
+
+    theta[nu,0,0] = weights[nu]*(inv_yacobi[nu, 0, 0]*sigma_xx + inv_yacobi[nu, 0, 1]*sigma_xy)
+    theta[nu,0,1] = weights[nu]*(inv_yacobi[nu, 0, 0]*sigma_xy + inv_yacobi[nu, 0, 1]*sigma_yy)
+    theta[nu,1,0] = weights[nu]*(inv_yacobi[nu, 1, 0]*sigma_xx + inv_yacobi[nu, 1, 1]*sigma_xy)
+    theta[nu,1,1] = weights[nu]*(inv_yacobi[nu, 1, 0]*sigma_xy + inv_yacobi[nu, 1, 1]*sigma_yy)
+
+    cuda.syncthreads() 
+
+    force_x = 0
+    force_y = 0
+
+    for la in range(nodes_count):
+
+        force_x += nabla_shapes[la,nu,0]*theta[la, 0, 0] + nabla_shapes[la,nu,1]*theta[la, 1, 0]
+        force_y += nabla_shapes[la,nu,0]*theta[la, 0, 1] + nabla_shapes[la,nu,1]*theta[la, 1, 1]
 
     mass = d_global_mass[nid, 0]
 
-    elem_accelerations_x = FLOAT(0.0)
-    elem_accelerations_y = FLOAT(0.0)
-    elem_accelerations_la_x = FLOAT(0.0)
-    elem_accelerations_la_y = FLOAT(0.0)
-    elem_accelerations_la_mu_x = FLOAT(0.0)
-    elem_accelerations_la_y = FLOAT(0.0)
-    
-    cuda.syncthreads() 
- 
-    for la in range(nodes_count):
- 
-        element_nabla_shapes_la[nu, 0] = element_type_nabla_shapes[la,nu,0]*element_inv_yacobi[la, 0, 0] + element_type_nabla_shapes[la,nu,
-        1]*element_inv_yacobi[la, 1, 0]
-        element_nabla_shapes_la[nu, 1] = element_type_nabla_shapes[la,nu,0]*element_inv_yacobi[la, 0, 1] + element_type_nabla_shapes[la,nu,1]*element_inv_yacobi[la, 1, 1]
-
-        cuda.syncthreads() 
-
-        elem_accelerations_la_x = FLOAT(0.0)
-        elem_accelerations_la_y = FLOAT(0.0)
-
-        for mu in range(nodes_count):
-
-            L_m_l_0 = element_nabla_shapes_la[mu, 0]
-            L_m_l_1 = element_nabla_shapes_la[mu, 1]
-
-            L_n_l_0 = element_nabla_shapes_la[nu, 0]
-            L_n_l_1 = element_nabla_shapes_la[nu, 1]
-
-            k_block_0_0 = hooke_a*L_n_l_0*L_m_l_0 + hooke_c*L_n_l_1*L_m_l_1
-            k_block_0_1 = hooke_b*L_n_l_0*L_m_l_1 + hooke_c*L_n_l_1*L_m_l_0
-            k_block_1_0 = hooke_b*L_n_l_1*L_m_l_0 + hooke_c*L_n_l_0*L_m_l_1
-            k_block_1_1 = hooke_a*L_n_l_1*L_m_l_1 + hooke_c*L_n_l_0*L_m_l_0
-
-            (element_displacement_x, element_displacement_y) = element_displacement[mu]
-
-            elem_accelerations_la_mu_x = (k_block_0_0*element_displacement_x + k_block_0_1*element_displacement_y)
-            elem_accelerations_la_mu_y = (k_block_1_0*element_displacement_x + k_block_1_1*element_displacement_y)
-
-            elem_accelerations_la_x += elem_accelerations_la_mu_x
-            elem_accelerations_la_y += elem_accelerations_la_mu_y
-
-
-        weight = element_weights[la] / mass
-
-        elem_accelerations_x += weight*elem_accelerations_la_x    
-        elem_accelerations_y += weight*elem_accelerations_la_y    
-
-        cuda.syncthreads()         
-
-
-    cuda.atomic.sub(d_global_acceleration, (nid, 0), elem_accelerations_x)
-    cuda.atomic.sub(d_global_acceleration, (nid, 1), elem_accelerations_y)
+    cuda.atomic.sub(d_global_acceleration, (nid, 0), force_x/mass)
+    cuda.atomic.sub(d_global_acceleration, (nid, 1), force_y/mass)
 
 
 
@@ -186,6 +162,7 @@ def change_velocity_and_displacement(
 
 
 def simulation_step(
+        n_deg,
         # dc_element_types_register: DIntA,
         d_element_types_nabla_shapes: FloatSxSxD,
         d_elements_weights: DFloatEN,
@@ -209,8 +186,10 @@ def simulation_step(
     elements_count = d_elements_families.shape[0]
     nodes_count = d_global_nodes.shape[0]
 
+    blocks_per_grid = elements_count
+    threads_per_block = (n_deg+1)**DIM
 
-    change_acceleration[elements_count, THREADS_COUNT](
+    change_acceleration[blocks_per_grid, threads_per_block](
         d_global_acceleration,
         # dc_element_types_register,
         d_element_types_nabla_shapes,
@@ -229,8 +208,9 @@ def simulation_step(
     )
 
     blocks_per_grid = (nodes_count + THREADS_COUNT - 1) // THREADS_COUNT
-
-    change_velocity_and_displacement[blocks_per_grid, THREADS_COUNT](
+    threads_per_block = THREADS_COUNT
+    
+    change_velocity_and_displacement[blocks_per_grid, threads_per_block](
         tau, 
         d_global_outer_force, 
         d_global_displacement, 
@@ -245,10 +225,10 @@ def main():
     print('hello')
 
     # Порядок спектрального элемента
-    n_deg = 7
+    n_deg = 8
 
     # Физический размер пластины
-    plate_size = (20, 10)
+    plate_size = (100, 50)
 
     # Размер (квадратного) элемента
     single_element_size = 1
@@ -257,7 +237,7 @@ def main():
     total_simulation_time = 1
 
     # Количество шагов симуляции
-    total_steps = 428
+    total_steps = 547
 
     # Шаг по времени
     tau = total_simulation_time/total_steps
@@ -392,6 +372,7 @@ def main():
             
 
             simulation_step(
+                n_deg,
                 # element_types_register,
                 d_element_types_nabla_shapes,
                 d_elements_weights,
@@ -444,6 +425,7 @@ def main():
             #     d_global_outer_forces[riker_pulse_nid:(riker_pulse_nid+1), 1:2].copy_to_device(np.array([[riker_pulse[step]]], dtype=np.float32))
             
             simulation_step(
+                n_deg,
                 # dc_element_types_register,
                 d_element_types_nabla_shapes,
                 d_elements_weights,
@@ -465,7 +447,7 @@ def main():
             )
 
             global_velocity = d_global_velocity.copy_to_host()
-            print(step, time.time() - step_duration)
+            # print(step, time.time() - step_duration)
 
         print(time.time() - full_duration)
         print('success!')
