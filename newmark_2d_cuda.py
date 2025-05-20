@@ -2,7 +2,7 @@ import time
 
 from typing import Any
 import numpy as np
-from numba.cuda.random import create_xoroshiro128p_states
+from numba import njit
 
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
@@ -109,12 +109,15 @@ def change_acceleration(
     elem_accelerations_y = FLOAT(0.0)
     elem_accelerations_la_x = FLOAT(0.0)
     elem_accelerations_la_y = FLOAT(0.0)
+    elem_accelerations_la_mu_x = FLOAT(0.0)
+    elem_accelerations_la_y = FLOAT(0.0)
     
     cuda.syncthreads() 
  
     for la in range(nodes_count):
  
-        element_nabla_shapes_la[nu, 0] = element_type_nabla_shapes[la,nu,0]*element_inv_yacobi[la, 0, 0] + element_type_nabla_shapes[la,nu,1]*element_inv_yacobi[la, 1, 0]
+        element_nabla_shapes_la[nu, 0] = element_type_nabla_shapes[la,nu,0]*element_inv_yacobi[la, 0, 0] + element_type_nabla_shapes[la,nu,
+        1]*element_inv_yacobi[la, 1, 0]
         element_nabla_shapes_la[nu, 1] = element_type_nabla_shapes[la,nu,0]*element_inv_yacobi[la, 0, 1] + element_type_nabla_shapes[la,nu,1]*element_inv_yacobi[la, 1, 1]
 
         cuda.syncthreads() 
@@ -137,8 +140,12 @@ def change_acceleration(
 
             (element_displacement_x, element_displacement_y) = element_displacement[mu]
 
-            elem_accelerations_la_x += (k_block_0_0*element_displacement_x + k_block_0_1*element_displacement_y)
-            elem_accelerations_la_y += (k_block_1_0*element_displacement_x + k_block_1_1*element_displacement_y)
+            elem_accelerations_la_mu_x = (k_block_0_0*element_displacement_x + k_block_0_1*element_displacement_y)
+            elem_accelerations_la_mu_y = (k_block_1_0*element_displacement_x + k_block_1_1*element_displacement_y)
+
+            elem_accelerations_la_x += elem_accelerations_la_mu_x
+            elem_accelerations_la_y += elem_accelerations_la_mu_y
+
 
         weight = element_weights[la] / mass
 
@@ -146,6 +153,7 @@ def change_acceleration(
         elem_accelerations_y += weight*elem_accelerations_la_y    
 
         cuda.syncthreads()         
+
 
     cuda.atomic.sub(d_global_acceleration, (nid, 0), elem_accelerations_x)
     cuda.atomic.sub(d_global_acceleration, (nid, 1), elem_accelerations_y)
@@ -170,7 +178,6 @@ def change_velocity_and_displacement(
 
     d_global_velocity[nid, 0] += tau*d_global_acceleration[nid, 0]
     d_global_velocity[nid, 1] += tau*d_global_acceleration[nid, 1]
-
     d_global_displacement[nid, 0] += tau*d_global_velocity[nid, 0]
     d_global_displacement[nid, 1] += tau*d_global_velocity[nid, 1]
 
@@ -241,7 +248,7 @@ def main():
     n_deg = 7
 
     # Физический размер пластины
-    plate_size = (100, 100)
+    plate_size = (20, 10)
 
     # Размер (квадратного) элемента
     single_element_size = 1
@@ -250,7 +257,7 @@ def main():
     total_simulation_time = 1
 
     # Количество шагов симуляции
-    total_steps = 10
+    total_steps = 428
 
     # Шаг по времени
     tau = total_simulation_time/total_steps
@@ -357,7 +364,7 @@ def main():
         elements_inv_yacobi[mesh.offsets[eid]:mesh.offsets[eid+1]] = element.inv_yacobi
     d_elements_inv_yacobi = cuda.to_device(elements_inv_yacobi)
 
-
+    
     # element_types_register = np.array([1, 2, n_deg, 0, 0], INT)
     # dc_element_types_register = cuda.const.array_like(element_types_register)
 
